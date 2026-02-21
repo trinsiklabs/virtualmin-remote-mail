@@ -19,15 +19,18 @@ if ($in{'action'} eq 'save_overrides') {
 	my $server = $server_id ? &get_remote_mail_server($server_id) : undef;
 	$server || &error($text{'setup_enoserver'});
 
-	# Track which override keys changed
+	# Validate and collect changes
 	my $changed = 0;
+	my %old_overrides;
 	foreach my $key (qw(spam_gateway spam_gateway_host outgoing_relay outgoing_relay_port)) {
 		my $dk = "remote_mail_${key}";
+		$old_overrides{$dk} = $d->{$dk} || '';
 		my $new_val = $in{"ovr_${key}"};
 		$new_val =~ s/^\s+|\s+$//g if defined($new_val);
 		$new_val = '' if !defined($new_val);
-		my $old_val = $d->{$dk} || '';
-		if ($new_val ne $old_val) {
+		my $verr = &validate_mail_override($key, $new_val);
+		&error($verr) if ($verr);
+		if ($new_val ne $old_overrides{$dk}) {
 			$d->{$dk} = $new_val;
 			$changed = 1;
 			}
@@ -37,11 +40,18 @@ if ($in{'action'} eq 'save_overrides') {
 		&ui_print_unbuffered_header(&virtual_server::domain_in($d),
 		                            $text{'domain_title'}, "");
 
-		# Re-provision DNS with new effective config
+		# Build a temporary domain hash with OLD overrides for cleanup.
+		# $d already has new values; we need the old ones for delete.
+		my %old_d = %$d;
+		foreach my $dk (keys %old_overrides) {
+			$old_d{$dk} = $old_overrides{$dk};
+			}
+
+		# Re-provision DNS: delete with old config, create with new
 		my $state = &get_domain_state($d->{'dom'});
 		if ($state && $state->{'dns_configured'}) {
 			&$virtual_server::first_print($text{'setup_dns'});
-			my $err = &delete_remote_mail_dns($d, $server);
+			my $err = &delete_remote_mail_dns(\%old_d, $server);
 			$err = &setup_remote_mail_dns($d, $server) if (!$err);
 			if ($err) {
 				&$virtual_server::second_print(
@@ -53,10 +63,10 @@ if ($in{'action'} eq 'save_overrides') {
 				}
 			}
 
-		# Re-provision Postfix transport with new effective config
+		# Re-provision Postfix: delete with old config, create with new
 		if ($state && $state->{'postfix_configured'}) {
 			&$virtual_server::first_print($text{'setup_postfix'});
-			my $err = &delete_remote_postfix($d, $server_id, $server);
+			my $err = &delete_remote_postfix(\%old_d, $server_id, $server);
 			$err = &setup_remote_postfix($d, $server_id, $server) if (!$err);
 			if ($err) {
 				&$virtual_server::second_print(

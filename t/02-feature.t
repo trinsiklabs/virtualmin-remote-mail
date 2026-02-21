@@ -239,11 +239,131 @@ subtest 'feature_setup lifecycle' => sub {
 };
 
 # =========================================
-# Test: feature_delete cleans up
+# Test: feature_inputs_parse with overrides
 # =========================================
 
-subtest 'feature_delete cleanup' => sub {
-    plan tests => 4;
+subtest 'feature_inputs_parse stores overrides in domain hash' => sub {
+    plan tests => 5;
+
+    save_remote_mail_server('1', {
+        host         => 'vh2.trinsik.io',
+        default      => 1,
+    });
+
+    my $d = { 'dom' => 'parse-test.com', 'dns' => 1 };
+    my $input_name = $main::module_name;
+    $input_name =~ s/[^A-Za-z0-9]/_/g;
+
+    my %in = (
+        $input_name."_server"             => '1',
+        $input_name."_ovr_spam_gateway"   => '10.0.0.50',
+        $input_name."_ovr_spam_gateway_host" => 'spamgw',
+        $input_name."_ovr_outgoing_relay" => 'relay.test.com',
+        $input_name."_ovr_outgoing_relay_port" => '587',
+    );
+
+    my $err = feature_inputs_parse($d, \%in);
+    is($err, undef, 'feature_inputs_parse succeeds');
+    is($d->{'remote_mail_spam_gateway'}, '10.0.0.50', 'spam_gateway stored');
+    is($d->{'remote_mail_spam_gateway_host'}, 'spamgw', 'spam_gateway_host stored');
+    is($d->{'remote_mail_outgoing_relay'}, 'relay.test.com', 'outgoing_relay stored');
+    is($d->{'remote_mail_outgoing_relay_port'}, '587', 'outgoing_relay_port stored');
+
+    delete_remote_mail_server('1');
+};
+
+# =========================================
+# Test: feature_inputs_parse rejects invalid overrides
+# =========================================
+
+subtest 'feature_inputs_parse rejects bad input' => sub {
+    plan tests => 2;
+
+    save_remote_mail_server('1', {
+        host         => 'vh2.trinsik.io',
+        default      => 1,
+    });
+
+    my $d = { 'dom' => 'bad-input.com', 'dns' => 1 };
+    my $input_name = $main::module_name;
+    $input_name =~ s/[^A-Za-z0-9]/_/g;
+
+    # Bad IP
+    my %in = (
+        $input_name."_server"           => '1',
+        $input_name."_ovr_spam_gateway" => 'not-an-ip',
+    );
+    my $err = feature_inputs_parse($d, \%in);
+    like($err, qr/Invalid IP/, 'Rejects bad IP in spam_gateway');
+
+    # Bad port
+    %in = (
+        $input_name."_server"                  => '1',
+        $input_name."_ovr_outgoing_relay_port" => '99999',
+    );
+    $err = feature_inputs_parse($d, \%in);
+    like($err, qr/Invalid port/, 'Rejects bad port');
+
+    delete_remote_mail_server('1');
+};
+
+# =========================================
+# Test: feature_args_parse with overrides
+# =========================================
+
+subtest 'feature_args_parse stores overrides' => sub {
+    plan tests => 3;
+
+    save_remote_mail_server('1', {
+        host         => 'vh2.trinsik.io',
+        default      => 1,
+    });
+
+    my $d = { 'dom' => 'cli-test.com', 'dns' => 1 };
+    my %args = (
+        $main::module_name."-server"        => '1',
+        $main::module_name."-spam-gateway"  => '10.0.0.99',
+        $main::module_name."-outgoing-relay-port" => '2525',
+    );
+
+    my $err = feature_args_parse($d, \%args);
+    is($err, undef, 'feature_args_parse succeeds');
+    is($d->{'remote_mail_spam_gateway'}, '10.0.0.99', 'CLI spam_gateway stored');
+    is($d->{'remote_mail_outgoing_relay_port'}, '2525', 'CLI outgoing_relay_port stored');
+
+    delete_remote_mail_server('1');
+};
+
+# =========================================
+# Test: feature_args_parse rejects invalid CLI input
+# =========================================
+
+subtest 'feature_args_parse rejects bad CLI input' => sub {
+    plan tests => 1;
+
+    save_remote_mail_server('1', {
+        host         => 'vh2.trinsik.io',
+        default      => 1,
+    });
+
+    my $d = { 'dom' => 'cli-bad.com', 'dns' => 1 };
+    my %args = (
+        $main::module_name."-server"       => '1',
+        $main::module_name."-spam-gateway" => "1.2.3.4'; rm -rf /",
+    );
+
+    my $err = feature_args_parse($d, \%args);
+    like($err, qr/Invalid IP/, 'CLI rejects shell injection in IP');
+
+    delete_remote_mail_server('1');
+};
+
+# =========================================
+# Test: feature_delete cleans up override keys
+# =========================================
+
+subtest 'feature_delete cleanup including override keys' => sub {
+    plan tests => 8;
 
     save_remote_mail_server('1', {
         host         => 'vh2.trinsik.io',
@@ -268,6 +388,10 @@ subtest 'feature_delete cleanup' => sub {
         'dns' => 1,
         'remote_mail_server' => '1',
         'remote_mail_dkim_enabled' => 1,
+        'remote_mail_spam_gateway' => '10.0.0.50',
+        'remote_mail_spam_gateway_host' => 'spamgw',
+        'remote_mail_outgoing_relay' => 'relay.test.com',
+        'remote_mail_outgoing_relay_port' => '587',
     };
 
     @main::_commands_run = ();
@@ -281,6 +405,10 @@ subtest 'feature_delete cleanup' => sub {
     # Verify domain hash fields cleaned up
     ok(!$d->{'remote_mail_server'}, 'Domain server field cleared');
     ok(!$d->{'remote_mail_dkim_enabled'}, 'Domain DKIM field cleared');
+    ok(!$d->{'remote_mail_spam_gateway'}, 'Override spam_gateway cleared');
+    ok(!$d->{'remote_mail_spam_gateway_host'}, 'Override spam_gateway_host cleared');
+    ok(!$d->{'remote_mail_outgoing_relay'}, 'Override outgoing_relay cleared');
+    ok(!$d->{'remote_mail_outgoing_relay_port'}, 'Override outgoing_relay_port cleared');
 
     delete_remote_mail_server('1');
 };
@@ -326,6 +454,60 @@ subtest 'feature_modify domain rename' => sub {
     ok($new_state->{'server_id'}, 'State exists for renamed domain');
 
     delete_domain_state('new-name.com');
+    delete_remote_mail_server('1');
+};
+
+# =========================================
+# Test: feature_modify preserves overrides during domain rename
+# =========================================
+
+subtest 'feature_modify with overrides' => sub {
+    plan tests => 4;
+
+    save_remote_mail_server('1', {
+        host         => 'vh2.trinsik.io',
+        ssh_host     => 'vh2.trinsik.io',
+        ssh_user     => 'root',
+        spam_gateway => '216.55.103.236',
+        spam_gateway_host => 'mg',
+        dkim_selector => '202307',
+        default      => 1,
+    });
+
+    save_domain_state('ovr-old.com', {
+        server_id => '1',
+        dns_configured => 1,
+        postfix_configured => 1,
+    });
+
+    my $oldd = {
+        'dom' => 'ovr-old.com',
+        'dns' => 1,
+        'remote_mail_server' => '1',
+        'remote_mail_spam_gateway' => '10.0.0.99',
+        'remote_mail_spam_gateway_host' => 'spamgw',
+    };
+    my $newd = {
+        'dom' => 'ovr-new.com',
+        'dns' => 1,
+        'remote_mail_server' => '1',
+        'remote_mail_spam_gateway' => '10.0.0.99',
+        'remote_mail_spam_gateway_host' => 'spamgw',
+    };
+
+    @main::_commands_run = ();
+    my $ok = feature_modify($newd, $oldd);
+    is($ok, 1, 'feature_modify with overrides succeeds');
+
+    # State should exist for new domain
+    my $state = get_domain_state('ovr-new.com');
+    ok($state->{'server_id'}, 'State exists for renamed domain');
+
+    # Overrides should still be on the domain hash
+    is($newd->{'remote_mail_spam_gateway'}, '10.0.0.99', 'Override preserved after rename');
+    is($newd->{'remote_mail_spam_gateway_host'}, 'spamgw', 'Override host preserved after rename');
+
+    delete_domain_state('ovr-new.com');
     delete_remote_mail_server('1');
 };
 

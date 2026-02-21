@@ -203,6 +203,67 @@ subtest 'setup_remote_postfix — overridden outgoing relay' => sub {
     like($cmds, qr/2525/, 'Transport uses overridden relay port');
 };
 
+# =========================================
+# Test: Re-provisioning pattern (delete old, create new)
+# Simulates what save_domain.cgi does when overrides change.
+# =========================================
+
+subtest 'Re-provision postfix: delete old config, create with new' => sub {
+    plan tests => 4;
+
+    my $server = get_remote_mail_server('1');
+
+    # Old domain state: relay was smtp-out.trinsiklabs.com (server default)
+    my $old_d = {
+        'dom' => 'reprovision.com',
+        'dns' => 1,
+        # No overrides — using server defaults
+    };
+
+    # New domain state: override relay to relay.new.com:2525
+    my $new_d = {
+        'dom' => 'reprovision.com',
+        'dns' => 1,
+        'remote_mail_outgoing_relay' => 'relay.new.com',
+        'remote_mail_outgoing_relay_port' => '2525',
+    };
+
+    # Phase 1: Delete with OLD config
+    @main::_commands_run = ();
+    my $err = delete_remote_postfix($old_d, '1', $server);
+    is($err, undef, 'Delete with old config succeeds');
+
+    # Phase 2: Setup with NEW config
+    @main::_commands_run = ();
+    $err = setup_remote_postfix($new_d, '1', $server);
+    is($err, undef, 'Setup with new config succeeds');
+
+    my $cmds = captured_cmds();
+    like($cmds, qr/relay\.new\.com/, 'New transport uses overridden relay');
+    like($cmds, qr/2525/, 'New transport uses overridden port');
+};
+
+subtest 'get_effective_mail_config used in setup_remote_postfix' => sub {
+    plan tests => 2;
+
+    # Domain has overrides; server has different values.
+    # setup_remote_postfix should merge them internally.
+    my $d_merge = {
+        'dom' => 'mergetest.com',
+        'dns' => 1,
+        'remote_mail_outgoing_relay' => 'custom-relay.io',
+        'remote_mail_outgoing_relay_port' => '465',
+    };
+
+    my $server = get_remote_mail_server('1');
+    @main::_commands_run = ();
+    my $err = setup_remote_postfix($d_merge, '1', $server);
+    is($err, undef, 'setup_remote_postfix with domain overrides succeeds');
+
+    my $cmds = captured_cmds();
+    like($cmds, qr/custom-relay\.io.*465/, 'Postfix uses domain override relay, not server default');
+};
+
 # Clean up
 delete_remote_mail_server('1');
 

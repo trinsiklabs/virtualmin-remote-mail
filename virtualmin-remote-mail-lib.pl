@@ -313,6 +313,49 @@ my $file = "$domains_dir/${domain}.conf";
 &unlink_file($file) if (-f $file);
 }
 
+# ---- Override Validation ----
+
+# validate_mail_override($key, $value)
+# Validates a per-domain mail routing override value.
+# Returns undef on success, or an error message string on failure.
+# $key is one of: spam_gateway, spam_gateway_host, outgoing_relay, outgoing_relay_port
+sub validate_mail_override
+{
+my ($key, $value) = @_;
+return undef if (!defined($value) || $value eq '');
+
+if ($key eq 'spam_gateway') {
+	# Must be a valid IPv4 address
+	if ($value !~ /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/ ||
+	    $1 > 255 || $2 > 255 || $3 > 255 || $4 > 255) {
+		return "Invalid IP address: $value";
+		}
+	}
+elsif ($key eq 'spam_gateway_host') {
+	# Must be a valid DNS label: alphanumeric + hyphens, no leading/trailing hyphen
+	if ($value !~ /^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?$/) {
+		return "Invalid hostname prefix: $value (alphanumeric and hyphens only)";
+		}
+	}
+elsif ($key eq 'outgoing_relay') {
+	# Must be a valid hostname: labels separated by dots
+	if ($value !~ /^[a-zA-Z0-9]([a-zA-Z0-9\-\.]{0,253}[a-zA-Z0-9])?$/) {
+		return "Invalid relay hostname: $value";
+		}
+	# No consecutive dots, no leading/trailing dots
+	if ($value =~ /\.\./ || $value =~ /^\./ || $value =~ /\.$/) {
+		return "Invalid relay hostname: $value";
+		}
+	}
+elsif ($key eq 'outgoing_relay_port') {
+	# Must be a numeric port 1-65535
+	if ($value !~ /^\d+$/ || $value < 1 || $value > 65535) {
+		return "Invalid port number: $value (must be 1-65535)";
+		}
+	}
+return undef;
+}
+
 # ---- Effective Mail Config (domain overrides + server defaults) ----
 
 # get_effective_mail_config(&domain, \%server)

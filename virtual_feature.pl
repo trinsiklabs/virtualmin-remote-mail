@@ -443,7 +443,7 @@ foreach my $f ([ 'spam_gateway', $text{'feat_ovr_spam_gateway'} ],
 	my $placeholder = $cur_server ? $cur_server->{$key} || '' : '';
 	$rv .= &ui_table_row($label,
 		&ui_textbox($input_name."_ovr_${key}", $val, 30).
-		($placeholder ne '' ? " <i>($text{'feat_ovr_default'}: ${placeholder})</i>" : ''));
+		($placeholder ne '' ? " <i>($text{'feat_ovr_default'}: ".&html_escape($placeholder).")</i>" : ''));
 	}
 
 return $rv;
@@ -469,6 +469,8 @@ foreach my $key (qw(spam_gateway spam_gateway_host outgoing_relay outgoing_relay
 	if (defined($in->{$field})) {
 		my $val = $in->{$field};
 		$val =~ s/^\s+|\s+$//g;
+		my $err = &validate_mail_override($key, $val);
+		return $err if ($err);
 		$d->{"remote_mail_${key}"} = $val;
 		}
 	}
@@ -527,7 +529,10 @@ my %cli_map = (
 foreach my $arg (keys %cli_map) {
 	my $full = $module_name . $arg;
 	if (defined($args->{$full})) {
-		$d->{"remote_mail_".$cli_map{$arg}} = $args->{$full};
+		my $val = $args->{$full};
+		my $err = &validate_mail_override($cli_map{$arg}, $val);
+		return $err if ($err);
+		$d->{"remote_mail_".$cli_map{$arg}} = $val;
 		}
 	}
 
@@ -887,6 +892,11 @@ eval {
 	if ($server->{'outgoing_relay'}) {
 		my $relay = $server->{'outgoing_relay'};
 		my $port = $server->{'outgoing_relay_port'} || 25;
+		# Defense-in-depth: strip any shell-unsafe chars (validation
+		# should have already rejected bad input, but belt-and-suspenders)
+		$relay =~ s/[^a-zA-Z0-9.\-]//g;
+		$port =~ s/[^0-9]//g;
+		$port = 25 if (!$port);
 		my $transport = "smtp:[${relay}]:${port}";
 		$cmd = "grep -q '^\@\Q${dom}\E\\b' /etc/postfix/dependent 2>/dev/null" .
 		       " || echo '\@${dom} ${transport}' >> /etc/postfix/dependent" .

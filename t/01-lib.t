@@ -282,6 +282,82 @@ subtest 'get_effective_mail_config — partial overrides' => sub {
 };
 
 # =========================================
+# Test: get_effective_mail_config — empty-string override
+# =========================================
+
+subtest 'get_effective_mail_config — empty string overrides use server default' => sub {
+    plan tests => 4;
+
+    my $server = {
+        spam_gateway      => '216.55.103.236',
+        spam_gateway_host => 'mg',
+        outgoing_relay      => 'smtp-out.trinsiklabs.com',
+        outgoing_relay_port => 25,
+        host              => 'vh2.trinsik.io',
+    };
+    # Domain has all overrides set to empty string (cleared)
+    my $d = {
+        'dom' => 'cleared.com',
+        'remote_mail_spam_gateway'      => '',
+        'remote_mail_spam_gateway_host' => '',
+        'remote_mail_outgoing_relay'      => '',
+        'remote_mail_outgoing_relay_port' => '',
+    };
+
+    my $eff = get_effective_mail_config($d, $server);
+    is($eff->{'spam_gateway'}, '216.55.103.236', 'Empty string falls back to server spam_gateway');
+    is($eff->{'spam_gateway_host'}, 'mg', 'Empty string falls back to server spam_gateway_host');
+    is($eff->{'outgoing_relay'}, 'smtp-out.trinsiklabs.com', 'Empty string falls back to server outgoing_relay');
+    is($eff->{'outgoing_relay_port'}, 25, 'Empty string falls back to server outgoing_relay_port');
+};
+
+# =========================================
+# Test: validate_mail_override
+# =========================================
+
+subtest 'validate_mail_override — valid inputs' => sub {
+    plan tests => 5;
+
+    is(validate_mail_override('spam_gateway', '10.0.0.1'), undef, 'Valid IP accepted');
+    is(validate_mail_override('spam_gateway', ''), undef, 'Empty value accepted (clears override)');
+    is(validate_mail_override('spam_gateway_host', 'mg'), undef, 'Valid hostname prefix accepted');
+    is(validate_mail_override('outgoing_relay', 'smtp-out.trinsiklabs.com'), undef, 'Valid relay hostname accepted');
+    is(validate_mail_override('outgoing_relay_port', '587'), undef, 'Valid port accepted');
+};
+
+subtest 'validate_mail_override — invalid inputs' => sub {
+    plan tests => 10;
+
+    # Bad IPs
+    like(validate_mail_override('spam_gateway', '999.1.1.1'),
+        qr/Invalid IP/, 'Rejects octet > 255');
+    like(validate_mail_override('spam_gateway', 'not-an-ip'),
+        qr/Invalid IP/, 'Rejects non-IP string');
+    like(validate_mail_override('spam_gateway', "1.2.3.4'; rm -rf /"),
+        qr/Invalid IP/, 'Rejects shell injection in IP');
+
+    # Bad hostname prefix
+    like(validate_mail_override('spam_gateway_host', '-leading'),
+        qr/Invalid hostname prefix/, 'Rejects leading hyphen');
+    like(validate_mail_override('spam_gateway_host', 'has spaces'),
+        qr/Invalid hostname prefix/, 'Rejects spaces in hostname');
+    like(validate_mail_override('spam_gateway_host', 'has.dots'),
+        qr/Invalid hostname prefix/, 'Rejects dots in hostname prefix');
+
+    # Bad relay
+    like(validate_mail_override('outgoing_relay', 'relay..host.com'),
+        qr/Invalid relay hostname/, 'Rejects consecutive dots');
+    like(validate_mail_override('outgoing_relay', "host; rm -rf /"),
+        qr/Invalid relay hostname/, 'Rejects shell injection in relay');
+
+    # Bad ports
+    like(validate_mail_override('outgoing_relay_port', '0'),
+        qr/Invalid port/, 'Rejects port 0');
+    like(validate_mail_override('outgoing_relay_port', '99999'),
+        qr/Invalid port/, 'Rejects port > 65535');
+};
+
+# =========================================
 # Test: ACL
 # =========================================
 

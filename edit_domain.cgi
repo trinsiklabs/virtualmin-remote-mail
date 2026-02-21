@@ -71,7 +71,7 @@ if ($server_id && $server) {
 		my $server_default = $server->{$key} || '';
 		print &ui_table_row($label,
 			&ui_textbox("ovr_${key}", $val, 30).
-			($server_default ne '' ? " <i>($text{'feat_ovr_default'}: ${server_default})</i>" : ''));
+			($server_default ne '' ? " <i>($text{'feat_ovr_default'}: ".&html_escape($server_default).")</i>" : ''));
 		}
 
 	print &ui_table_end();
