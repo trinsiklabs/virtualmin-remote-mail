@@ -8,6 +8,11 @@ feat_eclash_mail=The local mail feature cannot be enabled at the same time as th
 feat_server=Remote mail server
 feat_eserver=The selected remote mail server does not exist
 feat_module=Remote Mail Server
+feat_ovr_spam_gateway=Override spam gateway IP
+feat_ovr_spam_gateway_host=Override spam gateway hostname prefix
+feat_ovr_outgoing_relay=Override outgoing relay server
+feat_ovr_outgoing_relay_port=Override outgoing relay port
+feat_ovr_default=server default
 
 index_title=Remote Mail Server
 index_servers=Configured Mail Servers
@@ -124,6 +129,13 @@ domain_not_configured=Not configured
 domain_users=Mail Users
 domain_add_user=Add Mail User
 domain_sync_ssl=Sync SSL Now
+domain_overrides=Mail Routing Overrides
+domain_ovr_spam_gateway=Spam gateway IP
+domain_ovr_spam_gateway_host=Spam gateway hostname prefix
+domain_ovr_outgoing_relay=Outgoing relay server
+domain_ovr_outgoing_relay_port=Outgoing relay port
+domain_ovr_none=Using server default
+domain_save_overrides=Save Overrides
 
 user_title=Remote Mail User
 user_header=Mail User Details

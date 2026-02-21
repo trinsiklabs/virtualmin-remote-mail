@@ -211,6 +211,77 @@ subtest 'Domain state management' => sub {
 };
 
 # =========================================
+# Test: get_effective_mail_config
+# =========================================
+
+subtest 'get_effective_mail_config — server defaults when no overrides' => sub {
+    plan tests => 4;
+
+    my $server = {
+        spam_gateway      => '216.55.103.236',
+        spam_gateway_host => 'mg',
+        outgoing_relay      => 'smtp-out.trinsiklabs.com',
+        outgoing_relay_port => 25,
+        host              => 'vh2.trinsik.io',
+    };
+    my $d = { 'dom' => 'example.com' };
+
+    my $eff = get_effective_mail_config($d, $server);
+    is($eff->{'spam_gateway'}, '216.55.103.236', 'Server default spam_gateway');
+    is($eff->{'spam_gateway_host'}, 'mg', 'Server default spam_gateway_host');
+    is($eff->{'outgoing_relay'}, 'smtp-out.trinsiklabs.com', 'Server default outgoing_relay');
+    is($eff->{'outgoing_relay_port'}, 25, 'Server default outgoing_relay_port');
+};
+
+subtest 'get_effective_mail_config — full domain overrides' => sub {
+    plan tests => 4;
+
+    my $server = {
+        spam_gateway      => '216.55.103.236',
+        spam_gateway_host => 'mg',
+        outgoing_relay      => 'smtp-out.trinsiklabs.com',
+        outgoing_relay_port => 25,
+        host              => 'vh2.trinsik.io',
+    };
+    my $d = {
+        'dom' => 'override.com',
+        'remote_mail_spam_gateway'      => '10.0.0.99',
+        'remote_mail_spam_gateway_host' => 'spam',
+        'remote_mail_outgoing_relay'      => 'relay.other.com',
+        'remote_mail_outgoing_relay_port' => 587,
+    };
+
+    my $eff = get_effective_mail_config($d, $server);
+    is($eff->{'spam_gateway'}, '10.0.0.99', 'Domain override spam_gateway');
+    is($eff->{'spam_gateway_host'}, 'spam', 'Domain override spam_gateway_host');
+    is($eff->{'outgoing_relay'}, 'relay.other.com', 'Domain override outgoing_relay');
+    is($eff->{'outgoing_relay_port'}, 587, 'Domain override outgoing_relay_port');
+};
+
+subtest 'get_effective_mail_config — partial overrides' => sub {
+    plan tests => 4;
+
+    my $server = {
+        spam_gateway      => '216.55.103.236',
+        spam_gateway_host => 'mg',
+        outgoing_relay      => 'smtp-out.trinsiklabs.com',
+        outgoing_relay_port => 25,
+        host              => 'vh2.trinsik.io',
+    };
+    # Domain overrides only spam_gateway, rest should fall through to server
+    my $d = {
+        'dom' => 'partial.com',
+        'remote_mail_spam_gateway' => '10.0.0.50',
+    };
+
+    my $eff = get_effective_mail_config($d, $server);
+    is($eff->{'spam_gateway'}, '10.0.0.50', 'Domain override spam_gateway');
+    is($eff->{'spam_gateway_host'}, 'mg', 'Server default spam_gateway_host (no override)');
+    is($eff->{'outgoing_relay'}, 'smtp-out.trinsiklabs.com', 'Server default outgoing_relay (no override)');
+    is($eff->{'outgoing_relay_port'}, 25, 'Server default outgoing_relay_port (no override)');
+};
+
+# =========================================
 # Test: ACL
 # =========================================
 

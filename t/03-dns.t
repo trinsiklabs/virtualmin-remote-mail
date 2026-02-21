@@ -149,4 +149,46 @@ subtest 'MX records — custom spam gateway prefix' => sub {
     is($recs[0]->{'value'}, 'spamfilter.example.com', 'Custom prefix used');
 };
 
+# =========================================
+# Test: MX/SPF with overridden effective config
+# =========================================
+
+subtest 'MX records — with overridden spam gateway via effective config' => sub {
+    plan tests => 4;
+
+    # Simulate what get_effective_mail_config would return: domain override
+    my $eff = {
+        host              => '167.172.136.27',
+        spam_gateway      => '10.0.0.99',         # overridden from domain
+        spam_gateway_host => 'spamgw',             # overridden from domain
+    };
+
+    my @recs = build_mx_records('override.com', $eff);
+    is(scalar @recs, 3, 'Three records with overridden spam gateway');
+    is($recs[0]->{'value'}, 'spamgw.override.com', 'MX points to overridden spam gateway host');
+    is($recs[1]->{'value'}, '10.0.0.99', 'A record uses overridden spam gateway IP');
+    is($recs[2]->{'value'}, '167.172.136.27', 'mail.domain A record unchanged');
+};
+
+subtest 'SPF record — with overridden spam gateway IP' => sub {
+    plan tests => 2;
+
+    # Server default would be 216.55.103.236, but domain overrides to 10.0.0.99
+    my $eff = {
+        host         => '167.172.136.27',
+        spam_gateway => '10.0.0.99',
+    };
+
+    my @ip4 = ( $eff->{'host'} );
+    push(@ip4, $eff->{'spam_gateway'}) if ($eff->{'spam_gateway'});
+    my $spf = build_spf_record({
+        ip4     => \@ip4,
+        include => ['_spf.trinsiklabs.com'],
+        all     => '~all',
+    });
+
+    like($spf, qr/ip4:10\.0\.0\.99/, 'SPF contains overridden spam gateway IP');
+    unlike($spf, qr/216\.55\.103\.236/, 'SPF does NOT contain server default spam gateway');
+};
+
 done_testing();

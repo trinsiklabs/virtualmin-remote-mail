@@ -313,6 +313,24 @@ my $file = "$domains_dir/${domain}.conf";
 &unlink_file($file) if (-f $file);
 }
 
+# ---- Effective Mail Config (domain overrides + server defaults) ----
+
+# get_effective_mail_config(&domain, \%server)
+# Merges per-domain overrides (stored in $d->{'remote_mail_*'}) with
+# server defaults. Returns a new hash ref — never mutates the inputs.
+sub get_effective_mail_config
+{
+my ($d, $server) = @_;
+my %eff = %$server;
+for my $key (qw(spam_gateway spam_gateway_host outgoing_relay outgoing_relay_port)) {
+	my $dk = "remote_mail_${key}";
+	if (defined $d->{$dk} && $d->{$dk} ne '') {
+		$eff{$key} = $d->{$dk};
+		}
+	}
+return \%eff;
+}
+
 # ---- Server Selection for Domain ----
 
 # get_domain_mail_server($d)

@@ -51,6 +51,33 @@ if ($d->{'remote_mail_ssl_synced'}) {
 
 print &ui_table_end();
 
+# Mail routing overrides
+if ($server_id && $server) {
+	print &ui_form_start("save_domain.cgi", "post");
+	print &ui_hidden("dom", $d->{'dom'});
+	print &ui_hidden("action", "save_overrides");
+	print &ui_table_start($text{'domain_overrides'}, undef, 2);
+
+	my @ovr_fields = (
+		[ 'spam_gateway',      $text{'domain_ovr_spam_gateway'} ],
+		[ 'spam_gateway_host', $text{'domain_ovr_spam_gateway_host'} ],
+		[ 'outgoing_relay',    $text{'domain_ovr_outgoing_relay'} ],
+		[ 'outgoing_relay_port', $text{'domain_ovr_outgoing_relay_port'} ],
+	);
+	foreach my $f (@ovr_fields) {
+		my ($key, $label) = @$f;
+		my $dk = "remote_mail_${key}";
+		my $val = $d->{$dk} || '';
+		my $server_default = $server->{$key} || '';
+		print &ui_table_row($label,
+			&ui_textbox("ovr_${key}", $val, 30).
+			($server_default ne '' ? " <i>($text{'feat_ovr_default'}: ${server_default})</i>" : ''));
+		}
+
+	print &ui_table_end();
+	print &ui_form_end([ [ undef, $text{'domain_save_overrides'} ] ]);
+	}
+
 # SSL sync button
 if ($server_id && $state->{'ssl_synced'}) {
 	print &ui_form_start("save_domain.cgi", "post");

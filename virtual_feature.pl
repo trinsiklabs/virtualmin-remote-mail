@@ -277,6 +277,10 @@ else {
 delete $d->{'remote_mail_server'};
 delete $d->{'remote_mail_ssl_synced'};
 delete $d->{'remote_mail_dkim_enabled'};
+delete $d->{'remote_mail_spam_gateway'};
+delete $d->{'remote_mail_spam_gateway_host'};
+delete $d->{'remote_mail_outgoing_relay'};
+delete $d->{'remote_mail_outgoing_relay_port'};
 
 &release_lock_remote_mail();
 return 1;
@@ -423,12 +427,30 @@ foreach my $id (@servers) {
 	}
 my $default = $d ? $d->{'remote_mail_server'} :
               &get_default_remote_mail_server();
-return &ui_table_row($text{'feat_server'},
+my $rv = &ui_table_row($text{'feat_server'},
 	&ui_select($input_name."_server", $default, \@opts));
+
+# Per-domain mail routing overrides (blank = use server default)
+my $cur_server = $d && $d->{'remote_mail_server'}
+    ? &get_remote_mail_server($d->{'remote_mail_server'}) : undef;
+foreach my $f ([ 'spam_gateway', $text{'feat_ovr_spam_gateway'} ],
+               [ 'spam_gateway_host', $text{'feat_ovr_spam_gateway_host'} ],
+               [ 'outgoing_relay', $text{'feat_ovr_outgoing_relay'} ],
+               [ 'outgoing_relay_port', $text{'feat_ovr_outgoing_relay_port'} ]) {
+	my ($key, $label) = @$f;
+	my $dk = "remote_mail_${key}";
+	my $val = $d ? ($d->{$dk} || '') : '';
+	my $placeholder = $cur_server ? $cur_server->{$key} || '' : '';
+	$rv .= &ui_table_row($label,
+		&ui_textbox($input_name."_ovr_${key}", $val, 30).
+		($placeholder ne '' ? " <i>($text{'feat_ovr_default'}: ${placeholder})</i>" : ''));
+	}
+
+return $rv;
 }
 
 # feature_inputs_parse(&domain, &in)
-# Parse the server selection input
+# Parse the server selection input and per-domain override fields
 sub feature_inputs_parse
 {
 my ($d, $in) = @_;
@@ -440,6 +462,17 @@ if (defined($in->{$input_name."_server"})) {
 		}
 	$d->{'remote_mail_server'} = $id;
 	}
+
+# Per-domain mail routing overrides
+foreach my $key (qw(spam_gateway spam_gateway_host outgoing_relay outgoing_relay_port)) {
+	my $field = $input_name."_ovr_${key}";
+	if (defined($in->{$field})) {
+		my $val = $in->{$field};
+		$val =~ s/^\s+|\s+$//g;
+		$d->{"remote_mail_${key}"} = $val;
+		}
+	}
+
 return undef;
 }
 
@@ -451,11 +484,27 @@ return ( { 'name' => $module_name."-server",
            'value' => 'server-id',
            'opt' => 1,
            'desc' => 'Remote mail server ID' },
+         { 'name' => $module_name."-spam-gateway",
+           'value' => 'ip',
+           'opt' => 1,
+           'desc' => 'Override spam gateway IP (blank = server default)' },
+         { 'name' => $module_name."-spam-gateway-host",
+           'value' => 'prefix',
+           'opt' => 1,
+           'desc' => 'Override spam gateway hostname prefix (blank = server default)' },
+         { 'name' => $module_name."-outgoing-relay",
+           'value' => 'host',
+           'opt' => 1,
+           'desc' => 'Override outgoing relay server (blank = server default)' },
+         { 'name' => $module_name."-outgoing-relay-port",
+           'value' => 'port',
+           'opt' => 1,
+           'desc' => 'Override outgoing relay port (blank = server default)' },
        );
 }
 
 # feature_args_parse(&domain, &args)
-# Parse CLI arguments
+# Parse CLI arguments including per-domain mail routing overrides
 sub feature_args_parse
 {
 my ($d, $args) = @_;
@@ -467,6 +516,21 @@ if (defined($args->{$module_name."-server"})) {
 		}
 	$d->{'remote_mail_server'} = $id;
 	}
+
+# Per-domain mail routing overrides
+my %cli_map = (
+	"-spam-gateway"       => "spam_gateway",
+	"-spam-gateway-host"  => "spam_gateway_host",
+	"-outgoing-relay"     => "outgoing_relay",
+	"-outgoing-relay-port" => "outgoing_relay_port",
+);
+foreach my $arg (keys %cli_map) {
+	my $full = $module_name . $arg;
+	if (defined($args->{$full})) {
+		$d->{"remote_mail_".$cli_map{$arg}} = $args->{$full};
+		}
+	}
+
 return undef;
 }
 
@@ -579,11 +643,14 @@ else {
 
 # setup_remote_mail_dns(&domain, \%server)
 # Creates DNS records: MX, A for mail hosts, SPF TXT, and autoconfig CNAME.
-# Uses Virtualmin's DNS API.
+# Uses Virtualmin's DNS API. Merges per-domain overrides with server config.
 sub setup_remote_mail_dns
 {
 my ($d, $server) = @_;
 return "No DNS zone for domain" if (!$d->{'dns'});
+
+# Merge domain overrides with server defaults
+$server = &get_effective_mail_config($d, $server);
 
 eval {
 	if (defined(&virtual_server::obtain_lock_dns)) {
@@ -691,6 +758,9 @@ sub delete_remote_mail_dns
 my ($d, $server) = @_;
 return undef if (!$d->{'dns'});
 
+# Merge domain overrides with server defaults
+$server = &get_effective_mail_config($d, $server) if ($server);
+
 eval {
 	if (defined(&virtual_server::obtain_lock_dns)) {
 		&virtual_server::obtain_lock_dns($d, 1);
@@ -795,6 +865,9 @@ sub setup_remote_postfix
 {
 my ($d, $server_id, $server) = @_;
 my $dom = $d->{'dom'};
+
+# Merge domain overrides with server defaults
+$server = &get_effective_mail_config($d, $server);
 
 eval {
 	# Add to virtual_domains (hash map file)

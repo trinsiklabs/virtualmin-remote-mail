@@ -175,6 +175,34 @@ subtest 'list_remote_mail_users' => sub {
     is(scalar @users, 0, 'Empty user list from mock');
 };
 
+# =========================================
+# Test: setup_remote_postfix with overridden relay
+# =========================================
+
+subtest 'setup_remote_postfix — overridden outgoing relay' => sub {
+    plan tests => 3;
+
+    @main::_commands_run = ();
+
+    # Build an effective config with overridden relay (simulating what
+    # get_effective_mail_config would return for a domain with overrides)
+    my $eff_server = {
+        host              => 'vh2.trinsik.io',
+        spam_gateway      => '216.55.103.236',
+        spam_gateway_host => 'mg',
+        outgoing_relay      => 'relay.override.com',   # domain override
+        outgoing_relay_port => 2525,                    # domain override
+    };
+
+    my $d_ovr = { 'dom' => 'overridetest.com', 'dns' => 1 };
+    my $err = setup_remote_postfix($d_ovr, '1', $eff_server);
+    is($err, undef, 'setup_remote_postfix with overridden relay succeeds');
+
+    my $cmds = captured_cmds();
+    like($cmds, qr/relay\.override\.com/, 'Transport uses overridden relay host');
+    like($cmds, qr/2525/, 'Transport uses overridden relay port');
+};
+
 # Clean up
 delete_remote_mail_server('1');
 
