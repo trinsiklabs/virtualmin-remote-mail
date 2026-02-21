@@ -25,7 +25,15 @@ When the "Remote Mail Server" feature is enabled for a domain:
 
 When the feature is removed, everything is cleaned up in reverse.
 
-## Installation
+## Quick Install
+
+```bash
+curl -sL https://raw.githubusercontent.com/trinsiklabs/virtualmin-remote-mail/main/install.sh | bash
+```
+
+This downloads the module from GitHub, packages it, installs it into Webmin, and registers it as a Virtualmin plugin automatically.
+
+## Manual Installation
 
 ```bash
 # On the web server (vh1):
