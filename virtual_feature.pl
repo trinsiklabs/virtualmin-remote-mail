@@ -680,6 +680,10 @@ return "No DNS zone for domain" if (!$d->{'dns'});
 # Merge domain overrides with server defaults
 $server = &get_effective_mail_config($d, $server);
 
+# Resolve server host to IP for A records and SPF
+my $host_ip = &resolve_to_ip($server->{'host'});
+$server = { %$server, 'host' => $host_ip };
+
 eval {
 	if (defined(&virtual_server::obtain_lock_dns)) {
 		&virtual_server::obtain_lock_dns($d, 1);

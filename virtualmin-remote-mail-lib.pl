@@ -4,6 +4,7 @@
 
 use strict;
 use warnings;
+use Socket;
 our (%text, %config, %module_info);
 our $module_name;
 our $module_config_directory;
@@ -154,23 +155,25 @@ return ($out, $exit >> 8);
 }
 
 # test_remote_mail_server($id)
-# Tests both Webmin RPC and SSH connectivity. Returns undef on success,
-# or an error message on failure.
+# Tests Webmin RPC (if credentials configured) and SSH connectivity.
+# Returns undef on success, or an error message on failure.
 sub test_remote_mail_server
 {
 my ($id) = @_;
 my $server = &get_remote_mail_server($id);
 return "Server $id not found" if (!$server);
 
-# Test Webmin RPC
-eval {
-	my $ver = &remote_mail_call($id, 'webmin', 'get_webmin_version');
-	if (!$ver) {
-		die "No response from Webmin RPC";
+# Test Webmin RPC (only if credentials are configured)
+if ($server->{'webmin_user'} && $server->{'webmin_pass'}) {
+	eval {
+		my $ver = &remote_mail_call($id, 'webmin', 'get_webmin_version');
+		if (!$ver) {
+			die "No response from Webmin RPC";
+			}
+		};
+	if ($@) {
+		return &text('test_erpc', $@);
 		}
-	};
-if ($@) {
-	return &text('test_erpc', $@);
 	}
 
 # Test SSH
@@ -180,6 +183,21 @@ if ($exit != 0 || $out !~ /ok/) {
 	}
 
 return undef;
+}
+
+# ---- DNS Helpers ----
+
+# resolve_to_ip($host)
+# Returns the IPv4 address for a hostname. If the input already looks like an
+# IPv4 address, returns it unchanged. Falls back to the original value if
+# resolution fails.
+sub resolve_to_ip
+{
+my ($host) = @_;
+return $host if (!$host);
+return $host if ($host =~ /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/);
+my $packed = inet_aton($host);
+return $packed ? inet_ntoa($packed) : $host;
 }
 
 # ---- DNS Record Builders ----
