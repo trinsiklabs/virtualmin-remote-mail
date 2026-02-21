@@ -512,6 +512,92 @@ subtest 'feature_modify with overrides' => sub {
 };
 
 # =========================================
+# Test: feature_modify re-provisions when overrides change (no rename)
+# =========================================
+
+subtest 'feature_modify re-provisions on override change' => sub {
+    plan tests => 4;
+
+    save_remote_mail_server('1', {
+        host         => 'vh2.trinsik.io',
+        ssh_host     => 'vh2.trinsik.io',
+        ssh_user     => 'root',
+        spam_gateway => '216.55.103.236',
+        spam_gateway_host => 'mg',
+        outgoing_relay => 'smtp-out.trinsiklabs.com',
+        outgoing_relay_port => 25,
+        dkim_selector => '202307',
+        default      => 1,
+    });
+
+    save_domain_state('same-name.com', {
+        server_id => '1',
+        dns_configured => 1,
+        postfix_configured => 1,
+    });
+
+    # Old domain: no overrides
+    my $oldd = {
+        'dom' => 'same-name.com',
+        'dns' => 1,
+        'remote_mail_server' => '1',
+    };
+
+    # New domain: same name but with overrides added
+    my $newd = {
+        'dom' => 'same-name.com',
+        'dns' => 1,
+        'remote_mail_server' => '1',
+        'remote_mail_spam_gateway' => '10.0.0.77',
+        'remote_mail_outgoing_relay' => 'new-relay.io',
+        'remote_mail_outgoing_relay_port' => '2525',
+    };
+
+    @main::_commands_run = ();
+    @main::_progress_messages = ();
+    my $ok = feature_modify($newd, $oldd);
+    is($ok, 1, 'feature_modify triggers on override change');
+
+    # Should have produced progress messages (re-provisioning happened)
+    ok(scalar @main::_progress_messages > 0, 'Re-provisioning happened');
+
+    # State should be updated
+    my $state = get_domain_state('same-name.com');
+    ok($state->{'dns_configured'}, 'DNS still configured after override change');
+    ok($state->{'postfix_configured'}, 'Postfix still configured after override change');
+
+    delete_domain_state('same-name.com');
+    delete_remote_mail_server('1');
+};
+
+subtest 'feature_modify skips when no changes' => sub {
+    plan tests => 2;
+
+    save_remote_mail_server('1', {
+        host         => 'vh2.trinsik.io',
+        ssh_host     => 'vh2.trinsik.io',
+        ssh_user     => 'root',
+        default      => 1,
+    });
+
+    my $d = {
+        'dom' => 'unchanged.com',
+        'dns' => 1,
+        'remote_mail_server' => '1',
+        'remote_mail_spam_gateway' => '10.0.0.1',
+    };
+    # Same values in both old and new
+    my $oldd = { %$d };
+
+    @main::_progress_messages = ();
+    my $ok = feature_modify($d, $oldd);
+    is($ok, 1, 'feature_modify succeeds with no changes');
+    is(scalar @main::_progress_messages, 0, 'No re-provisioning when nothing changed');
+
+    delete_remote_mail_server('1');
+};
+
+# =========================================
 # Test: rollback_setup cleans up partial state
 # =========================================
 

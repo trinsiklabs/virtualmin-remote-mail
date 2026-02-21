@@ -288,17 +288,33 @@ return 1;
 
 # feature_modify(&domain, &olddomain)
 # Called when a domain with this feature is modified (e.g., renamed)
+# or when domain settings change (including mail routing overrides).
 sub feature_modify
 {
 my ($d, $oldd) = @_;
-if ($d->{'dom'} ne $oldd->{'dom'}) {
-	&$virtual_server::first_print($text{'modify_domain'});
+my $renamed = ($d->{'dom'} ne $oldd->{'dom'});
+
+# Check if any mail routing overrides changed
+my $overrides_changed = 0;
+foreach my $key (qw(spam_gateway spam_gateway_host outgoing_relay outgoing_relay_port)) {
+	my $dk = "remote_mail_${key}";
+	my $new_val = $d->{$dk} || '';
+	my $old_val = $oldd->{$dk} || '';
+	if ($new_val ne $old_val) {
+		$overrides_changed = 1;
+		last;
+		}
+	}
+
+if ($renamed || $overrides_changed) {
+	&$virtual_server::first_print(
+		$renamed ? $text{'modify_domain'} : $text{'modify_overrides'});
 	my $server_id = &get_domain_mail_server($d);
 	my $server = &get_remote_mail_server($server_id);
 
 	&obtain_lock_remote_mail($d);
 
-	# Update DNS records
+	# Update DNS records — delete with old config, create with new
 	my $err = &delete_remote_mail_dns($oldd, $server);
 	if (!$err) {
 		$err = &setup_remote_mail_dns($d, $server);
@@ -306,17 +322,24 @@ if ($d->{'dom'} ne $oldd->{'dom'}) {
 
 	# Update Postfix transports
 	if (!$err && $server) {
-		$err = &modify_remote_postfix($d, $oldd, $server_id, $server);
+		if ($renamed) {
+			$err = &modify_remote_postfix($d, $oldd, $server_id, $server);
+			}
+		elsif ($overrides_changed) {
+			# Delete with old domain hash, recreate with new
+			$err = &delete_remote_postfix($oldd, $server_id, $server);
+			$err = &setup_remote_postfix($d, $server_id, $server) if (!$err);
+			}
 		}
 
-	# Update DKIM
-	if (!$err && $server && $d->{'remote_mail_dkim_enabled'}) {
+	# Update DKIM (only on rename — overrides don't affect DKIM)
+	if (!$err && $renamed && $server && $d->{'remote_mail_dkim_enabled'}) {
 		&delete_remote_dkim($oldd, $server_id, $server);
 		$err = &setup_remote_dkim($d, $server_id, $server);
 		}
 
-	# Move state file
-	&delete_domain_state($oldd->{'dom'});
+	# Move/update state file
+	&delete_domain_state($oldd->{'dom'}) if ($renamed);
 	my %state = ( 'server_id' => $server_id,
 	              'setup_time' => time(),
 	              'dns_configured' => 1,

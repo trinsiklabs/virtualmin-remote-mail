@@ -92,6 +92,7 @@ delete_dkim=Removing DKIM signing from remote server ..
 delete_edkim=DKIM removal failed: $1
 
 modify_domain=Updating remote mail configuration for renamed domain ..
+modify_overrides=Updating remote mail configuration for changed routing overrides ..
 modify_err=Modification failed: $1
 
 disable_mail=Disabling remote mail for domain ..
