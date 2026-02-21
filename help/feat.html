@@ -1,0 +1,17 @@
+<header>Use remote mail server?</header>
+
+When this feature is enabled, Virtualmin will configure a remote mail server
+to handle all email for the domain. This includes:<p>
+
+<ul>
+<li>DNS records (MX, SPF, DKIM) pointing to the remote mail server</li>
+<li>Postfix transport maps on the remote server for mail routing</li>
+<li>Dovecot mail accounts on the remote server</li>
+<li>OpenDKIM signing configuration for outgoing email</li>
+<li>SSL certificate synchronization for encrypted connections</li>
+</ul>
+
+This feature cannot be used together with the local Mail feature, as they
+would conflict. The DNS feature must also be enabled.<p>
+
+<footer>

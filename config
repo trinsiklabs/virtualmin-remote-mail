@@ -1,0 +1,5 @@
+default_server=server_1
+ssl_sync_method=ssh
+dkim_selector=202307
+maildir_format=.maildir
+disk_usage_cache=3600

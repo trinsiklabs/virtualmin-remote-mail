@@ -1,0 +1,140 @@
+feat_name=Remote Mail Server
+feat_losing=DNS records, Postfix transports, Dovecot accounts, and DKIM signing for this domain will be removed from the remote mail server
+feat_label=Use remote mail server?
+feat_label2=Remote mail
+feat_enoserver=No remote mail servers have been configured. Add one in the Remote Mail Server module settings.
+feat_edns=The DNS feature must be enabled to use a remote mail server
+feat_eclash_mail=The local mail feature cannot be enabled at the same time as the remote mail server feature
+feat_server=Remote mail server
+feat_eserver=The selected remote mail server does not exist
+feat_module=Remote Mail Server
+
+index_title=Remote Mail Server
+index_servers=Configured Mail Servers
+index_noservers=No remote mail servers have been configured yet.
+index_add=Add a remote mail server.
+index_return=module index
+
+servers_title=Remote Mail Servers
+servers_host=Hostname
+servers_desc=Description
+servers_default=Default?
+servers_actions=Actions
+servers_test=Test
+servers_edit=Edit
+servers_delete=Delete
+servers_none=No remote mail servers configured.
+servers_add=Add Mail Server
+
+server_title_add=Add Remote Mail Server
+server_title_edit=Edit Remote Mail Server
+server_header=Mail Server Details
+server_host=Mail server hostname
+server_desc=Description
+server_webmin_host=Webmin RPC hostname
+server_webmin_port=Webmin port
+server_webmin_ssl=Use SSL for Webmin?
+server_webmin_user=Webmin username
+server_webmin_pass=Webmin password
+server_ssh_host=SSH hostname
+server_ssh_user=SSH username
+server_ssh_key=SSH private key path
+server_spam_gateway=Spam gateway IP (optional)
+server_spam_gateway_host=Spam gateway hostname prefix
+server_outgoing_relay=Outgoing relay server
+server_outgoing_relay_port=Outgoing relay port
+server_dkim_selector=DKIM selector
+server_maildir_format=Maildir directory format
+server_default=Default server?
+
+save_err=Failed to save mail server
+save_ehost=Missing mail server hostname
+save_ewebmin_host=Missing Webmin RPC hostname
+save_ok=Mail server saved successfully
+
+delete_err=Failed to delete mail server
+delete_ok=Mail server deleted
+
+test_title=Test Mail Server Connection
+test_rpc=Testing Webmin RPC connection ..
+test_ssh=Testing SSH connection ..
+test_ok=All connectivity tests passed
+test_erpc=Webmin RPC test failed: $1
+test_essh=SSH test failed: $1
+
+setup_start=Setting up remote mail ..
+setup_enoserver=No remote mail server configured
+setup_test=Testing remote mail server connectivity ..
+setup_etest=Connectivity test failed: $1
+setup_dns=Configuring DNS records (MX, SPF, DKIM) ..
+setup_edns=DNS configuration failed: $1
+setup_postfix=Configuring Postfix on remote server ..
+setup_epostfix=Postfix configuration failed: $1
+setup_dovecot=Creating Dovecot mail account on remote server ..
+setup_edovecot=Dovecot configuration failed: $1
+setup_dkim=Configuring DKIM signing on remote server ..
+setup_edkim=DKIM configuration failed: $1
+setup_ssl=Syncing SSL certificates to remote mail server ..
+setup_essl=SSL sync failed: $1
+
+delete_dns=Removing DNS records ..
+delete_edns=DNS removal failed: $1
+delete_postfix=Removing Postfix configuration from remote server ..
+delete_epostfix=Postfix removal failed: $1
+delete_dovecot=Removing Dovecot mail account from remote server ..
+delete_edovecot=Dovecot account removal failed: $1
+delete_dkim=Removing DKIM signing from remote server ..
+delete_edkim=DKIM removal failed: $1
+
+modify_domain=Updating remote mail configuration for renamed domain ..
+modify_err=Modification failed: $1
+
+disable_mail=Disabling remote mail for domain ..
+disable_err=Failed to disable: $1
+
+enable_mail=Re-enabling remote mail for domain ..
+enable_err=Failed to enable: $1
+
+validate_enostate=No remote mail state file found for this domain
+validate_enodns=DNS records are not configured
+validate_enopostfix=Postfix transport not configured on remote server
+
+links_link=Remote Mail Settings
+
+backup_conf=Backing up remote mail configuration ..
+backup_name=Remote mail server configuration
+restore_conf=Restoring remote mail configuration ..
+
+tmpl_server=Default remote mail server
+tmpl_none=None
+tmpl_server_sel=Selected server
+
+domain_title=Remote Mail Settings
+domain_header=Mail Configuration
+domain_server=Mail server
+domain_status=Status
+domain_dns=DNS Records
+domain_postfix=Postfix Transport
+domain_dovecot=Dovecot Account
+domain_dkim=DKIM Signing
+domain_ssl=SSL Sync
+domain_last_ssl=Last SSL sync
+domain_configured=Configured
+domain_not_configured=Not configured
+domain_users=Mail Users
+domain_add_user=Add Mail User
+domain_sync_ssl=Sync SSL Now
+
+user_title=Remote Mail User
+user_header=Mail User Details
+user_email=Email address
+user_password=Password
+user_quota=Mailbox quota (MB)
+user_save=Save User
+user_delete=Delete User
+
+log_save=Modified remote mail settings for $1
+log_setup=Set up remote mail for $1
+log_delete=Removed remote mail for $1
+log_user_create=Created mail user $1
+log_user_delete=Deleted mail user $1

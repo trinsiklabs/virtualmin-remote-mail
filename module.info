@@ -1,0 +1,6 @@
+desc=Virtualmin Remote Mail Server
+category=servers
+depends=virtual-server/7.0 1.980
+hidden=1
+version=0.1
+os_support=debian-linux

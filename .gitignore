@@ -1,0 +1,7 @@
+*.bak
+*.swp
+*.swo
+*~
+.DS_Store
+domains/*.conf
+domains/*.du
