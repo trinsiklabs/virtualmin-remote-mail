@@ -442,6 +442,144 @@ if (defined(&virtual_server::release_lock_anything)) {
 	}
 }
 
+# ---- Certbot Deploy Hook Management ----
+
+# The hook script deployed to the remote mail server. When certbot on the
+# remote server renews any certificate, this hook rebuilds the Postfix SNI
+# map using postmap -F (which base64-encodes the cert file contents into
+# the hash table — required by Postfix tls_server_sni_maps).
+our $CERTBOT_HOOK_NAME = "virtualmin-remote-mail-sni-sync.sh";
+
+# get_certbot_hook_script()
+# Returns the shell script content for the remote certbot deploy hook.
+sub get_certbot_hook_script
+{
+return <<'HOOKSCRIPT';
+#!/bin/bash
+# virtualmin-remote-mail-sni-sync.sh
+# Certbot deploy hook installed by the virtualmin-remote-mail plugin.
+# Rebuilds the Postfix SNI map after any certificate renewal on this server.
+# The SNI map must be rebuilt with postmap -F to base64-encode cert contents.
+set -euo pipefail
+
+CERT_NAME=$(basename "$RENEWED_LINEAGE")
+HOME_DIR="/home/$CERT_NAME"
+
+# Only process domains that have per-domain SSL files
+if [ ! -d "$HOME_DIR/ssl" ]; then
+    exit 0
+fi
+
+FULLCHAIN="$RENEWED_LINEAGE/fullchain.pem"
+PRIVKEY="$RENEWED_LINEAGE/privkey.pem"
+CHAIN="$RENEWED_LINEAGE/chain.pem"
+
+if [ ! -f "$FULLCHAIN" ] || [ ! -f "$PRIVKEY" ]; then
+    logger -t certbot-sni-sync "ERROR: cert files missing for $CERT_NAME"
+    exit 0
+fi
+
+# Update per-domain cert files (used by SNI map entries)
+cp "$FULLCHAIN" "$HOME_DIR/ssl/$CERT_NAME.crt"
+cp "$PRIVKEY"   "$HOME_DIR/ssl/$CERT_NAME.key"
+[ -f "$CHAIN" ] && cp "$CHAIN" "$HOME_DIR/ssl/$CERT_NAME.ca"
+
+# Build ssl.combined: KEY first (Postfix smtpd_tls_chain_files format)
+cat "$PRIVKEY" "$FULLCHAIN" > "$HOME_DIR/ssl.combined"
+
+# Fix ownership and permissions
+DOMAIN_USER=$(stat -c '%U' "$HOME_DIR" 2>/dev/null || echo root)
+chown "$DOMAIN_USER:$DOMAIN_USER" \
+    "$HOME_DIR/ssl/$CERT_NAME.crt" \
+    "$HOME_DIR/ssl/$CERT_NAME.key" \
+    "$HOME_DIR/ssl.combined" 2>/dev/null || true
+[ -f "$HOME_DIR/ssl/$CERT_NAME.ca" ] && \
+    chown "$DOMAIN_USER:$DOMAIN_USER" "$HOME_DIR/ssl/$CERT_NAME.ca" 2>/dev/null || true
+chmod 600 "$HOME_DIR/ssl/$CERT_NAME.key" "$HOME_DIR/ssl.combined"
+
+# Rebuild Postfix SNI map with -F (base64-encodes cert contents into hash)
+if [ -f /etc/postfix/sni_map ]; then
+    postmap -F hash:/etc/postfix/sni_map 2>/dev/null || true
+fi
+
+# Restart Postfix (not just reload — smtpd processes cache TLS contexts)
+systemctl restart postfix 2>/dev/null || true
+systemctl reload dovecot  2>/dev/null || true
+
+logger -t certbot-sni-sync "Rebuilt SNI map for $CERT_NAME, restarted mail services"
+HOOKSCRIPT
+}
+
+# deploy_remote_certbot_hook($server_id)
+# Deploys the certbot deploy hook to the remote mail server via SSH.
+# Returns undef on success, or an error message on failure.
+sub deploy_remote_certbot_hook
+{
+my ($server_id) = @_;
+my $server = &get_remote_mail_server($server_id);
+return "Server not found" if (!$server);
+
+my $hook_path = "/etc/letsencrypt/renewal-hooks/deploy/$CERTBOT_HOOK_NAME";
+my $hook_content = &get_certbot_hook_script();
+
+eval {
+	# Ensure the deploy hooks directory exists
+	my ($out, $exit) = &remote_mail_ssh($server_id,
+		"mkdir -p /etc/letsencrypt/renewal-hooks/deploy");
+	if ($exit != 0) {
+		die "Failed to create hook directory: $out";
+		}
+
+	# Write the hook script to a local temp file, then transfer via RPC
+	my $tmp_local = "/tmp/.certbot-hook-$$-".time();
+	open(my $fh, '>', $tmp_local) or die "Cannot write temp file: $!";
+	print $fh $hook_content;
+	close($fh);
+
+	my $tmp_remote = "/tmp/.certbot-hook-remote-$$-".time();
+	eval { &remote_mail_write($server_id, $tmp_local, $tmp_remote) };
+	unlink($tmp_local);
+	if ($@) {
+		die "Failed to transfer hook script: $@";
+		}
+
+	($out, $exit) = &remote_mail_cmd($server_id,
+		"mv $tmp_remote $hook_path && chmod 755 $hook_path");
+	if ($exit != 0) {
+		&remote_mail_cmd($server_id, "rm -f $tmp_remote");
+		die "Failed to install hook: $out";
+		}
+	};
+
+return $@ ? "$@" : undef;
+}
+
+# remove_remote_certbot_hook($server_id)
+# Removes the certbot deploy hook from the remote mail server.
+# Returns undef on success, or an error message on failure.
+sub remove_remote_certbot_hook
+{
+my ($server_id) = @_;
+my $hook_path = "/etc/letsencrypt/renewal-hooks/deploy/$CERTBOT_HOOK_NAME";
+
+my ($out, $exit) = &remote_mail_ssh($server_id,
+	"rm -f $hook_path");
+return ($exit != 0) ? "Failed to remove hook: $out" : undef;
+}
+
+# check_remote_certbot_hook($server_id)
+# Checks if the certbot deploy hook is installed on the remote server.
+# Returns 1 if installed, 0 if not.
+sub check_remote_certbot_hook
+{
+my ($server_id) = @_;
+my $hook_path = "/etc/letsencrypt/renewal-hooks/deploy/$CERTBOT_HOOK_NAME";
+
+my ($out, $exit) = &remote_mail_ssh($server_id,
+	"test -x $hook_path && echo installed");
+return ($exit == 0 && $out =~ /installed/) ? 1 : 0;
+}
+
 # ---- ACL ----
 
 # can_edit_domain($dname)

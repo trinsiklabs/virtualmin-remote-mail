@@ -79,5 +79,16 @@ if ($server{'default'}) {
 	}
 
 &save_remote_mail_server($id, \%server);
+
+# Deploy certbot SNI sync hook to the remote mail server.
+# This ensures that when certbot on the mail server renews any certificate,
+# the Postfix SNI map is rebuilt with postmap -F (base64-encoding the cert
+# contents, which is required by tls_server_sni_maps).
+my $hook_err = &deploy_remote_certbot_hook($id);
+if ($hook_err) {
+	# Non-fatal: log but don't block the save
+	&webmin_log("hook_deploy_failed", "server", $id, { 'error' => $hook_err });
+	}
+
 &webmin_log("save", "server", $id);
 &redirect("edit.cgi");
