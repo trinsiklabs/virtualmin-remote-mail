@@ -1354,6 +1354,9 @@ eval {
 	if (! -r $cert) {
 		die "SSL certificate not found at $cert";
 		}
+	if (! -r $key) {
+		die "SSL key not found at $key";
+		}
 
 	my $ssh_host = $server->{'ssh_host'} || $server->{'host'};
 	my $ssh_user = $server->{'ssh_user'} || 'root';
@@ -1364,46 +1367,51 @@ eval {
 	                '-o', 'ConnectTimeout=10');
 	push(@scp_opts, '-i', $ssh_key) if ($ssh_key);
 
-	my $remote_dir = "/etc/ssl/mail/${dom}";
+	# Target: /home/{domain}/ssl/ — this is where the Postfix SNI map
+	# entries point. Certs MUST go here, not /etc/ssl/mail/.
+	my $remote_ssl = "/home/${dom}/ssl";
 	my $dest = "${ssh_user}\@${ssh_host}";
 
 	# Create remote directory
 	my ($out, $exit) = &remote_mail_ssh($server_id,
-		"mkdir -p ${remote_dir} && chmod 700 ${remote_dir}");
+		"mkdir -p ${remote_ssl}");
 	if ($exit != 0) {
 		die "Failed to create remote SSL directory: $out";
 		}
 
-	# SCP cert and key
+	# SCP cert, key, and CA chain to per-domain ssl dir
 	my $scp_base = "scp " . join(' ', map { quotemeta($_) } @scp_opts);
 	$out = &backquote_command(
 		"${scp_base} " . quotemeta($cert) .
-		" ${dest}:${remote_dir}/fullchain.pem 2>&1");
+		" ${dest}:${remote_ssl}/${dom}.crt 2>&1");
 	if ($?) {
 		die "Failed to copy certificate: $out";
 		}
 
 	$out = &backquote_command(
 		"${scp_base} " . quotemeta($key) .
-		" ${dest}:${remote_dir}/privkey.pem 2>&1");
+		" ${dest}:${remote_ssl}/${dom}.key 2>&1");
 	if ($?) {
 		die "Failed to copy private key: $out";
 		}
 
-	# Copy CA chain if available
 	if ($ca && -r $ca) {
 		$out = &backquote_command(
 			"${scp_base} " . quotemeta($ca) .
-			" ${dest}:${remote_dir}/chain.pem 2>&1");
+			" ${dest}:${remote_ssl}/${dom}.ca 2>&1");
 		}
 
-	# Set permissions on remote
+	# Build ssl.combined (KEY first — required by Postfix smtpd_tls_chain_files)
+	# and fix ownership/permissions, then rebuild the SNI map and restart mail
 	&remote_mail_ssh($server_id,
-		"chmod 600 ${remote_dir}/*.pem");
-
-	# Reload Dovecot and Postfix to pick up new certs
-	($out, $exit) = &remote_mail_ssh($server_id,
-		"systemctl reload dovecot 2>/dev/null; systemctl reload postfix 2>/dev/null");
+		"cat ${remote_ssl}/${dom}.key ${remote_ssl}/${dom}.crt > /home/${dom}/ssl.combined && " .
+		"OWNER=\$(stat -c '%U:%G' /home/${dom} 2>/dev/null || echo root:root) && " .
+		"chown \$OWNER ${remote_ssl}/${dom}.crt ${remote_ssl}/${dom}.key /home/${dom}/ssl.combined 2>/dev/null; " .
+		"test -f ${remote_ssl}/${dom}.ca && chown \$OWNER ${remote_ssl}/${dom}.ca 2>/dev/null; " .
+		"chmod 600 ${remote_ssl}/${dom}.key /home/${dom}/ssl.combined && " .
+		"postmap -F hash:/etc/postfix/sni_map 2>/dev/null; " .
+		"systemctl restart postfix 2>/dev/null; " .
+		"systemctl reload dovecot 2>/dev/null");
 	};
 
 return $@ ? "$@" : undef;
