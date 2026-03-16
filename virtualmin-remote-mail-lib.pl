@@ -530,23 +530,14 @@ eval {
 		die "Failed to create hook directory: $out";
 		}
 
-	# Write the hook script to a local temp file, then transfer via RPC
-	my $tmp_local = "/tmp/.certbot-hook-$$-".time();
-	open(my $fh, '>', $tmp_local) or die "Cannot write temp file: $!";
-	print $fh $hook_content;
-	close($fh);
+	# Transfer hook script via SSH using base64 encoding to avoid
+	# quoting issues with heredocs and special characters
+	use MIME::Base64;
+	my $encoded = encode_base64($hook_content, '');
 
-	my $tmp_remote = "/tmp/.certbot-hook-remote-$$-".time();
-	eval { &remote_mail_write($server_id, $tmp_local, $tmp_remote) };
-	unlink($tmp_local);
-	if ($@) {
-		die "Failed to transfer hook script: $@";
-		}
-
-	($out, $exit) = &remote_mail_cmd($server_id,
-		"mv $tmp_remote $hook_path && chmod 755 $hook_path");
+	($out, $exit) = &remote_mail_ssh($server_id,
+		"echo '$encoded' | base64 -d > $hook_path && chmod 755 $hook_path");
 	if ($exit != 0) {
-		&remote_mail_cmd($server_id, "rm -f $tmp_remote");
 		die "Failed to install hook: $out";
 		}
 	};
