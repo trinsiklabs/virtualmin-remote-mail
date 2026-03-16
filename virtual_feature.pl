@@ -194,6 +194,27 @@ if ($ok) {
 		}
 	}
 
+# Step 7: Ensure certbot deploy hook is installed on the remote server.
+# This hook rebuilds the Postfix SNI map (with postmap -F) whenever certbot
+# on the mail server renews any certificate. Without it, renewed certs are
+# written to disk but the SNI map retains stale base64-encoded cert data.
+if ($ok) {
+	if (!&check_remote_certbot_hook($server_id)) {
+		&$virtual_server::first_print($text{'setup_hook'});
+		$err = &deploy_remote_certbot_hook($server_id);
+		if ($err) {
+			&$virtual_server::second_print(
+				&text('setup_ehook', $err));
+			# Hook failure is non-fatal
+			}
+		else {
+			$state{'certbot_hook_deployed'} = 1;
+			&$virtual_server::second_print(
+				$virtual_server::text{'setup_done'});
+			}
+		}
+	}
+
 # Save state
 if ($ok) {
 	$d->{'remote_mail_server'} = $server_id;
@@ -306,6 +327,17 @@ foreach my $key (qw(spam_gateway spam_gateway_host outgoing_relay outgoing_relay
 		}
 	}
 
+# Check if SSL certificate changed (triggered by install-cert,
+# generate-letsencrypt-cert, etc. which call feature_modify for all plugins)
+my $ssl_changed = 0;
+if ($d->{'ssl_cert'} && $oldd->{'ssl_cert'}) {
+	$ssl_changed = ($d->{'ssl_cert'} ne $oldd->{'ssl_cert'} ||
+	                $d->{'ssl_key'} ne $oldd->{'ssl_key'});
+	}
+elsif ($d->{'ssl_cert'} && !$oldd->{'ssl_cert'}) {
+	$ssl_changed = 1;
+	}
+
 if ($renamed || $overrides_changed) {
 	&$virtual_server::first_print(
 		$renamed ? $text{'modify_domain'} : $text{'modify_overrides'});
@@ -355,6 +387,23 @@ if ($renamed || $overrides_changed) {
 		return 0;
 		}
 	&$virtual_server::second_print($virtual_server::text{'setup_done'});
+	}
+
+# Re-sync SSL to remote mail server when cert changes
+if ($ssl_changed) {
+	&$virtual_server::first_print($text{'modify_ssl'});
+	my $server_id = &get_domain_mail_server($d);
+
+	my $err = &sync_remote_mail_ssl($d, $server_id);
+	if ($err) {
+		&$virtual_server::second_print(
+			&text('modify_essl', $err));
+		}
+	else {
+		$d->{'remote_mail_ssl_synced'} = time();
+		&$virtual_server::second_print(
+			$virtual_server::text{'setup_done'});
+		}
 	}
 return 1;
 }
