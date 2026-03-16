@@ -5,7 +5,7 @@
 use strict;
 use warnings;
 use Socket;
-use MIME::Base64;
+use MIME::Base64 ();
 our (%text, %config, %module_info);
 our $module_name;
 our $module_config_directory;
@@ -533,7 +533,7 @@ eval {
 
 	# Transfer hook script via SSH using base64 encoding to avoid
 	# quoting issues with heredocs and special characters
-	my $encoded = encode_base64($hook_content, '');
+	my $encoded = MIME::Base64::encode_base64($hook_content, '');
 
 	($out, $exit) = &remote_mail_ssh($server_id,
 		"echo '$encoded' | base64 -d > $hook_path && chmod 755 $hook_path");
