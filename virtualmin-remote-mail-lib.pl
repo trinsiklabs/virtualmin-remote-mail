@@ -112,20 +112,50 @@ return undef;
 
 # ---- RPC and SSH Wrappers ----
 
-# remote_mail_call($server_id, $module, $func, @args)
-# Wrapper around remote_foreign_call to the mail server's Webmin
-sub remote_mail_call
+# _build_rpc_server($server_id)
+# Returns a server hash suitable for remote_foreign_call/require.
+# Caches the hash to avoid rebuilding on every call.
+our %_rpc_server_cache;
+sub _build_rpc_server
 {
-my ($server_id, $module, $func, @args) = @_;
+my ($server_id) = @_;
+return $_rpc_server_cache{$server_id} if ($_rpc_server_cache{$server_id});
 my $server = &get_remote_mail_server($server_id);
 return undef if (!$server);
-
 my $serv = { 'host' => $server->{'webmin_host'} || $server->{'host'},
              'port' => $server->{'webmin_port'} || 10000,
              'ssl'  => $server->{'webmin_ssl'},
              'user' => $server->{'webmin_user'},
              'pass' => $server->{'webmin_pass'} };
+$_rpc_server_cache{$server_id} = $serv;
+return $serv;
+}
 
+# _ensure_rpc_session($server_id, $module)
+# Ensures a fastrpc session is established for the given module.
+# Webmin 2.x requires remote_foreign_require before remote_foreign_call
+# to set up the fastrpc persistent connection and session token.
+our %_rpc_required;
+sub _ensure_rpc_session
+{
+my ($server_id, $module) = @_;
+my $key = "${server_id}::${module}";
+return if ($_rpc_required{$key});
+my $serv = &_build_rpc_server($server_id);
+return if (!$serv);
+&remote_foreign_require($serv, $module);
+$_rpc_required{$key} = 1;
+}
+
+# remote_mail_call($server_id, $module, $func, @args)
+# Wrapper around remote_foreign_call to the mail server's Webmin.
+# Ensures the fastrpc session is established before making the call.
+sub remote_mail_call
+{
+my ($server_id, $module, $func, @args) = @_;
+my $serv = &_build_rpc_server($server_id);
+return undef if (!$serv);
+&_ensure_rpc_session($server_id, $module);
 return &remote_foreign_call($serv, $module, $func, @args);
 }
 
