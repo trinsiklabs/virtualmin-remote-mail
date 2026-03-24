@@ -75,19 +75,7 @@ if [ -n "$REMOTE_HOST" ]; then
     # Deploy certbot SNI sync hook
     echo -n "  Deploying certbot SNI sync hook... "
     HOOK_PATH="/etc/letsencrypt/renewal-hooks/deploy/virtualmin-remote-mail-sni-sync.sh"
-    # Extract hook script from the installed plugin
-    HOOK_CONTENT=$(perl -e '
-        use lib "/usr/share/webmin", "/usr/share/webmin/virtualmin-remote-mail";
-        do "virtualmin-remote-mail-lib.pl" if -f "virtualmin-remote-mail-lib.pl";
-        require "/usr/share/webmin/virtualmin-remote-mail/virtualmin-remote-mail-lib.pl"
-            if !defined(&get_certbot_hook_script);
-        if (defined(&get_certbot_hook_script)) {
-            print &get_certbot_hook_script();
-        }
-    ' 2>/dev/null)
-    if [ -z "$HOOK_CONTENT" ]; then
-        # Fallback: use inline hook
-        HOOK_CONTENT='#!/bin/bash
+    HOOK_CONTENT='#!/bin/bash
 # virtualmin-remote-mail-sni-sync.sh — Certbot deploy hook
 # Rebuilds the Postfix SNI map after certificate renewal.
 set -euo pipefail
@@ -110,7 +98,6 @@ chmod 600 "$HOME_DIR/ssl/$CERT_NAME.key" "$HOME_DIR/ssl.combined"
 systemctl restart postfix 2>/dev/null || true
 systemctl reload dovecot 2>/dev/null || true
 logger -t certbot-sni-sync "Rebuilt SNI map for $CERT_NAME"'
-    fi
     echo "$HOOK_CONTENT" | ssh "root@$REMOTE_HOST" "
         mkdir -p /etc/letsencrypt/renewal-hooks/deploy
         cat > $HOOK_PATH
