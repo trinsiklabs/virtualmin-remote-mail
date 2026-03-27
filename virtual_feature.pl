@@ -172,8 +172,17 @@ if ($ok) {
 	else {
 		$state{'dkim_configured'} = 1;
 		$d->{'remote_mail_dkim_enabled'} = 1;
-		&$virtual_server::second_print(
-			$virtual_server::text{'setup_done'});
+
+		# Add DKIM TXT record to DNS (key was just generated on remote)
+		my $dkim_err = &add_dkim_dns_record($d, $server_id, $server);
+		if ($dkim_err) {
+			&$virtual_server::second_print(
+				&text('setup_edkim_dns', $dkim_err));
+			}
+		else {
+			&$virtual_server::second_print(
+				$virtual_server::text{'setup_done'});
+			}
 		}
 	}
 
@@ -1304,6 +1313,67 @@ if ($out =~ /p=([A-Za-z0-9+\/=\s"]+)/) {
 	$pubkey =~ s/[")\s]//g;
 	}
 return $pubkey;
+}
+
+# add_dkim_dns_record(&domain, $server_id, \%server)
+# Fetches the DKIM public key from the remote server and adds the
+# corresponding TXT record to the domain's DNS zone on this server.
+# Called after setup_remote_dkim generates the key on the remote.
+sub add_dkim_dns_record
+{
+my ($d, $server_id, $server) = @_;
+return "No DNS zone for domain" if (!$d->{'dns'});
+
+my $dom = $d->{'dom'};
+my $selector = $server->{'dkim_selector'} || '202307';
+
+# Fetch public key from remote
+my $pubkey = &get_remote_dkim_public_key($server_id, $dom, $selector);
+if (!$pubkey) {
+	return "Could not retrieve DKIM public key from remote server";
+	}
+
+my ($dkim_name, $dkim_value) = &build_dkim_record($dom, $selector, $pubkey);
+
+eval {
+	if (defined(&virtual_server::obtain_lock_dns)) {
+		&virtual_server::obtain_lock_dns($d, 1);
+		}
+
+	my ($recs, $file) = &virtual_server::get_domain_dns_records_and_file($d);
+	if (!$file) {
+		die "Could not get DNS zone file for $dom";
+		}
+
+	# Remove any existing DKIM records for this selector
+	foreach my $r (@$recs) {
+		if ($r->{'type'} eq 'TXT' &&
+		    ($r->{'name'} eq "${dkim_name}." ||
+		     $r->{'name'} eq $dkim_name)) {
+			&virtual_server::delete_dns_record($recs, $file, $r);
+			}
+		}
+
+	# Add the DKIM TXT record
+	&virtual_server::create_dns_record($recs, $file,
+		{ 'name' => "${dkim_name}.",
+		  'type' => 'TXT',
+		  'values' => [ "\"${dkim_value}\"" ] });
+
+	if (defined(&virtual_server::post_records_change)) {
+		&virtual_server::post_records_change($d, $recs, $file);
+		}
+	else {
+		&virtual_server::register_post_action(
+			\&virtual_server::restart_bind);
+		}
+
+	if (defined(&virtual_server::release_lock_dns)) {
+		&virtual_server::release_lock_dns($d, 1);
+		}
+	};
+
+return $@ ? "$@" : undef;
 }
 
 # delete_remote_dkim(&domain, $server_id, \%server)

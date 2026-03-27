@@ -81,6 +81,7 @@ setup_dkim=Configuring DKIM signing on remote server ..
 setup_edkim=DKIM configuration failed: $1
 setup_ssl=Syncing SSL certificates to remote mail server ..
 setup_essl=SSL sync failed: $1
+setup_edkim_dns=DKIM DNS record failed (non-fatal): $1
 setup_hook=Installing certbot SNI sync hook on remote mail server ..
 setup_ehook=Certbot hook install failed (non-fatal): $1
 
