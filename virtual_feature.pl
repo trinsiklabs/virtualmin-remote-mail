@@ -1471,17 +1471,23 @@ eval {
 			" ${dest}:${remote_ssl}/${dom}.ca 2>&1");
 		}
 
-	# Build ssl.combined (KEY first — required by Postfix smtpd_tls_chain_files)
-	# and fix ownership/permissions, then rebuild the SNI map and restart mail
+	# Build ssl.combined: KEY + LEAF + CA (full chain required for Dovecot SNI
+	# and modern mail clients like Apple Mail that strict-validate chain).
+	# KEY must be first for Postfix smtpd_tls_chain_files compatibility.
+	# If .ca is missing, falls back to key + crt (incomplete but functional).
 	&remote_mail_ssh($server_id,
-		"cat ${remote_ssl}/${dom}.key ${remote_ssl}/${dom}.crt > /home/${dom}/ssl.combined && " .
+		"if [ -f ${remote_ssl}/${dom}.ca ]; then " .
+		"  cat ${remote_ssl}/${dom}.key ${remote_ssl}/${dom}.crt ${remote_ssl}/${dom}.ca > /home/${dom}/ssl.combined; " .
+		"else " .
+		"  cat ${remote_ssl}/${dom}.key ${remote_ssl}/${dom}.crt > /home/${dom}/ssl.combined; " .
+		"fi && " .
 		"OWNER=\$(stat -c '%U:%G' /home/${dom} 2>/dev/null || echo root:root) && " .
 		"chown \$OWNER ${remote_ssl}/${dom}.crt ${remote_ssl}/${dom}.key /home/${dom}/ssl.combined 2>/dev/null; " .
 		"test -f ${remote_ssl}/${dom}.ca && chown \$OWNER ${remote_ssl}/${dom}.ca 2>/dev/null; " .
 		"chmod 600 ${remote_ssl}/${dom}.key /home/${dom}/ssl.combined && " .
 		"postmap -F hash:/etc/postfix/sni_map 2>/dev/null; " .
 		"systemctl restart postfix 2>/dev/null; " .
-		"systemctl reload dovecot 2>/dev/null");
+		"systemctl restart dovecot 2>/dev/null");
 	};
 
 return $@ ? "$@" : undef;
